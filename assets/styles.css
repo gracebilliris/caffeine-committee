@@ -61,7 +61,7 @@ label.inline input { margin: 0; }
 
 .charts { grid-template-columns: 1fr 1fr; gap: 1rem; }
 .charts article { min-width: 0; }
-.charts canvas  { width: 100% !important; height: 280px !important; }
+.charts canvas  { width: 100% !important; height: 300px !important; }
 @media (max-width: 900px) {
   .charts { grid-template-columns: 1fr; }
 }
