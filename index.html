@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Caffeine Committee</title>
+  <meta name="description" content="Ranking Sydney CBD coffee, one flat white at a time." />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <header class="container">
+    <hgroup>
+      <h1>☕ Caffeine Committee</h1>
+      <p>Ranking Sydney CBD coffee, one flat white at a time.</p>
+    </hgroup>
+    <p>
+      <a href="https://www.google.com/maps/search/?api=1&query=50+Martin+Place+Sydney"
+         target="_blank" rel="noopener">View 50 Martin Place →</a>
+    </p>
+  </header>
+
+  <main class="container">
+    <div id="config-warning" hidden>
+      <article>
+        <strong>Supabase not configured.</strong>
+        Edit <code>assets/js/config.js</code> with your project's
+        <code>supabaseUrl</code> and <code>supabaseAnonKey</code> to enable saving and live updates.
+      </article>
+    </div>
+
+    <section class="grid layout">
+      <article id="form-panel">
+        <header><strong>Add a rating</strong></header>
+
+        <form id="rating-form">
+          <label>
+            Cafe name
+            <input type="text" name="cafe_name" id="cafe_name" required
+                   placeholder="e.g. Single Origin Roasters" />
+          </label>
+
+          <label>
+            Address search
+            <div class="search-row">
+              <input type="text" id="address_query" placeholder="Search a cafe or address" />
+              <button type="button" id="search-btn" class="secondary">Search</button>
+            </div>
+          </label>
+
+          <ul id="search-results" class="search-results" hidden></ul>
+
+          <label>
+            Address
+            <input type="text" name="address" id="address" placeholder="Click map or search above" />
+          </label>
+
+          <input type="hidden" id="lat" />
+          <input type="hidden" id="lng" />
+
+          <label>
+            Rating: <output id="rating_out">7.5</output> / 10
+            <input type="range" id="rating_range" min="0" max="10" step="0.1" value="7.5" />
+          </label>
+          <label>
+            <input type="number" id="rating" name="rating"
+                   min="0" max="10" step="0.1" value="7.5" required />
+          </label>
+
+          <label>
+            By who
+            <input type="text" id="by" name="by" required placeholder="Your name" />
+          </label>
+
+          <label>
+            Comment <small>(optional)</small>
+            <textarea id="comment" name="comment" rows="2"
+                      placeholder="great flat white"></textarea>
+          </label>
+
+          <button type="submit" id="submit-btn">Submit rating</button>
+          <p id="form-status" class="status" hidden></p>
+        </form>
+      </article>
+
+      <article id="map-panel">
+        <header><strong>Map</strong> <small>Click anywhere to drop a pin</small></header>
+        <div id="map"></div>
+      </article>
+    </section>
+
+    <section>
+      <header class="row-between">
+        <h2>Leaderboard</h2>
+        <label class="inline">
+          <input type="checkbox" id="min-ratings-toggle" />
+          Min 2 ratings
+        </label>
+      </header>
+      <div class="table-wrap">
+        <table id="leaderboard">
+          <thead>
+            <tr>
+              <th data-sort="rank">#</th>
+              <th data-sort="cafe">Cafe</th>
+              <th data-sort="avg">Avg</th>
+              <th data-sort="count">Ratings</th>
+              <th data-sort="last">Last rated</th>
+              <th data-sort="dist">Distance</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Charts</h2>
+      <div class="grid charts">
+        <article>
+          <header><strong>Top 10 cafes</strong></header>
+          <canvas id="chart-top"></canvas>
+        </article>
+        <article>
+          <header><strong>Rating distribution</strong></header>
+          <canvas id="chart-dist"></canvas>
+        </article>
+        <article>
+          <header><strong>Most prolific raters</strong></header>
+          <canvas id="chart-raters"></canvas>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="container">
+    <small>Built with Leaflet, OpenStreetMap, Firebase, Chart.js, and Pico.css.</small>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
