@@ -1,9 +1,9 @@
 # ☕ Caffeine Committee
 
-> Ranking Sydney CBD coffee, one flat white at a time.
+> Ranking Sydney CBD coffee, one latte at a time.
 
 A tiny static site for our team near 50 Martin Place to rate cafes,
-see them on a map, and argue about who has the best flat white.
+see them on a map, and argue about who has the best latte.
 
 - **Host**: GitHub Pages
 - **Backend**: Supabase (free tier — Postgres + Realtime)
