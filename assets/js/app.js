@@ -241,19 +241,41 @@ function formatPhotonLabel(p) {
   return name ? `${name} — ${parts.join(", ")}` : parts.join(", ");
 }
 
+// Greater Sydney bounding box (W,S,E,N).
+const SYDNEY_BBOX = [150.5, -34.2, 151.4, -33.5];
+
+function haversineKm(a, b) {
+  const R = 6371, toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const x = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
 async function searchCafe(q) {
-  // Bias toward 50 Martin Place so nearby cafes float to the top.
-  const url = `https://photon.komoot.io/api/?lang=en&limit=6&lat=${MARTIN_PLACE.lat}&lon=${MARTIN_PLACE.lng}&q=${encodeURIComponent(q)}`;
+  // Bbox restricts to Greater Sydney; bias + lang refine ranking.
+  const bbox = SYDNEY_BBOX.join(",");
+  const url = `https://photon.komoot.io/api/?lang=en&limit=15&bbox=${bbox}`
+            + `&lat=${MARTIN_PLACE.lat}&lon=${MARTIN_PLACE.lng}`
+            + `&q=${encodeURIComponent(q)}`;
   const r = await fetch(url);
   if (!r.ok) throw new Error("Search failed");
   const data = await r.json();
-  return (data.features || []).map((f) => ({
-    lat: f.geometry.coordinates[1],
-    lon: f.geometry.coordinates[0],
-    display_name: formatPhotonLabel(f.properties),
-    name: f.properties.name,
-    osm_value: f.properties.osm_value,
-  }));
+  return (data.features || [])
+    .map((f) => {
+      const lat = f.geometry.coordinates[1], lon = f.geometry.coordinates[0];
+      return {
+        lat, lon,
+        display_name: formatPhotonLabel(f.properties),
+        name: f.properties.name,
+        osm_value: f.properties.osm_value,
+        _dist: haversineKm(MARTIN_PLACE, { lat, lng: lon }),
+      };
+    })
+    // Belt-and-braces: hard cap at 60km from Martin Place.
+    .filter((r) => r._dist <= 60)
+    .sort((a, b) => a._dist - b._dist)
+    .slice(0, 6);
 }
 
 async function reverseGeocode(lat, lng) {
