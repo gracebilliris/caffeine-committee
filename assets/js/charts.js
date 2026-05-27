@@ -135,31 +135,265 @@ export function renderDistribution(ratings) {
   const el = document.getElementById("chart-dist");
   if (!el) return;
 
-  let harsh = 0, mid = 0, loved = 0;
+  // 11 buckets: 0, 1, 2 ... 10 (round to nearest integer).
+  const buckets = Array.from({ length: 11 }, () => 0);
   for (const r of ratings) {
-    if (r.rating < 5) harsh++;
-    else if (r.rating <= 7) mid++;
-    else loved++;
+    const b = Math.max(0, Math.min(10, Math.round(r.rating)));
+    buckets[b] += 1;
   }
-  const total = harsh + mid + loved;
+  const total = buckets.reduce((s, n) => s + n, 0);
+  const avg = total
+    ? ratings.reduce((s, r) => s + r.rating, 0) / total
+    : null;
 
   charts.dist = new Chart(el, {
-    type: "doughnut",
+    type: "bar",
     data: {
-      labels: ["Harsh (<5)", "Mixed (5–7)", "Loved (>7)"],
+      labels: buckets.map((_, i) => String(i)),
       datasets: [{
-        data: [harsh, mid, loved],
-        backgroundColor: [PALETTE.red, PALETTE.amber, PALETTE.green],
-        borderColor: "transparent",
-        borderWidth: 0,
-        hoverOffset: 10,
-        spacing: 2,
+        label: "Ratings",
+        data: buckets,
+        backgroundColor: (ctx) => {
+          const i = ctx.dataIndex;
+          const base = i < 5 ? PALETTE.red : i <= 7 ? PALETTE.amber : PALETTE.green;
+          return makeGradient(ctx.chart.ctx, ctx.chart.chartArea, lighten(base, 0.35), base);
+        },
+        borderRadius: 6,
+        borderSkipped: false,
+        barPercentage: 0.92,
+        categoryPercentage: 0.92,
       }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: "68%",
+      layout: { padding: { top: 20 } },
+      scales: {
+        x: { grid: { display: false }, title: { display: true, text: "Score" } },
+        y: {
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          grid: { color: "rgba(120,120,120,0.08)" },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => `Score: ${items[0].label}`,
+            label: (ctx) => {
+              const pct = total ? ((ctx.parsed.y / total) * 100).toFixed(0) : 0;
+              return ` ${ctx.parsed.y} rating${ctx.parsed.y === 1 ? "" : "s"} (${pct}%)`;
+            },
+          },
+        },
+        annotationLine: avg != null ? { avg } : null,
+      },
+      animation: { duration: 600, easing: "easeOutQuart" },
+    },
+    plugins: [valueLabelPlugin({ axis: "y" }), avgLinePlugin()],
+  });
+}
+
+// Vertical dashed line at the average score (custom plugin).
+function avgLinePlugin() {
+  return {
+    id: "ccAvgLine",
+    afterDatasetsDraw(chart) {
+      const opt = chart.options.plugins.annotationLine;
+      if (!opt || opt.avg == null) return;
+      const x = chart.scales.x.getPixelForValue(opt.avg);
+      const { top, bottom } = chart.chartArea;
+      const { ctx } = chart;
+      ctx.save();
+      ctx.strokeStyle = "rgba(111,78,55,0.7)";
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const label = `avg ${opt.avg.toFixed(1)}`;
+      ctx.font = "600 11px " + Chart.defaults.font.family;
+      const w = ctx.measureText(label).width + 10;
+      ctx.fillStyle = "rgba(111,78,55,0.95)";
+      ctx.beginPath();
+      const r = 4, h = 18;
+      const lx = Math.min(Math.max(x - w / 2, chart.chartArea.left), chart.chartArea.right - w);
+      ctx.roundRect(lx, top - h - 2, w, h, r);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, lx + w / 2, top - h / 2 - 2);
+      ctx.restore();
+    },
+  };
+}
+
+// ---------- Sub-rating radar (taste/price/vibes/service) ----------
+const SUB_KEYS = ["taste", "price", "vibes", "service"];
+
+export function renderSubRatingRadar(ratings, cardEl) {
+  applyGlobalDefaults();
+  destroy("radar");
+  const el = document.getElementById("chart-radar");
+  if (!el) return;
+
+  const sums = { taste: 0, price: 0, vibes: 0, service: 0 };
+  const counts = { taste: 0, price: 0, vibes: 0, service: 0 };
+  for (const r of ratings) {
+    for (const k of SUB_KEYS) {
+      const v = r[k];
+      if (Number.isFinite(v) && v > 0) { sums[k] += v; counts[k] += 1; }
+    }
+  }
+  const totalSub = SUB_KEYS.reduce((s, k) => s + counts[k], 0);
+  if (cardEl) cardEl.hidden = totalSub === 0;
+  if (totalSub === 0) return;
+
+  const values = SUB_KEYS.map((k) => counts[k] ? +(sums[k] / counts[k]).toFixed(2) : 0);
+
+  charts.radar = new Chart(el, {
+    type: "radar",
+    data: {
+      labels: SUB_KEYS.map((k) => k[0].toUpperCase() + k.slice(1)),
+      datasets: [{
+        label: "Team average (1–5)",
+        data: values,
+        fill: true,
+        backgroundColor: "rgba(224, 165, 38, 0.25)",
+        borderColor: PALETTE.amber,
+        borderWidth: 2,
+        pointBackgroundColor: PALETTE.coffee,
+        pointBorderColor: "#fff",
+        pointHoverRadius: 6,
+        pointRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          min: 0, max: 5,
+          ticks: { stepSize: 1, backdropColor: "transparent", color: "rgba(120,120,120,0.6)" },
+          grid: { color: "rgba(120,120,120,0.15)" },
+          angleLines: { color: "rgba(120,120,120,0.15)" },
+          pointLabels: { font: { size: 12, weight: "600" } },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const k = SUB_KEYS[ctx.dataIndex];
+              return ` ${ctx.parsed.r.toFixed(2)} / 5  ·  ${counts[k]} rating${counts[k] === 1 ? "" : "s"}`;
+            },
+          },
+        },
+      },
+      animation: { duration: 700, easing: "easeOutQuart" },
+    },
+  });
+}
+
+// ---------- Activity over time ----------
+export function renderActivity(ratings) {
+  applyGlobalDefaults();
+  destroy("activity");
+  const el = document.getElementById("chart-activity");
+  if (!el) return;
+
+  const DAYS = 30;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const labels = [];
+  const days = [];
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    labels.push(d);
+    days.push({ key: d.toISOString().slice(0, 10), count: 0, sum: 0 });
+  }
+  const idx = new Map(days.map((d, i) => [d.key, i]));
+
+  for (const r of ratings) {
+    const s = r.created_at?.seconds;
+    if (!s) continue;
+    const d = new Date(s * 1000);
+    d.setHours(0, 0, 0, 0);
+    const k = d.toISOString().slice(0, 10);
+    const i = idx.get(k);
+    if (i == null) continue;
+    days[i].count += 1;
+    days[i].sum   += r.rating;
+  }
+  const counts = days.map((d) => d.count);
+  const avgs   = days.map((d) => d.count ? +(d.sum / d.count).toFixed(2) : null);
+
+  const fmt = new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short" });
+
+  charts.activity = new Chart(el, {
+    type: "bar",
+    data: {
+      labels: labels.map((d) => fmt.format(d)),
+      datasets: [
+        {
+          type: "bar",
+          label: "Ratings/day",
+          data: counts,
+          backgroundColor: (ctx) =>
+            makeGradient(ctx.chart.ctx, ctx.chart.chartArea, lighten(PALETTE.coffee, 0.55), PALETTE.coffee),
+          borderRadius: 4,
+          borderSkipped: false,
+          yAxisID: "yCount",
+          order: 2,
+        },
+        {
+          type: "line",
+          label: "Avg score",
+          data: avgs,
+          borderColor: PALETTE.amber,
+          backgroundColor: "rgba(224,165,38,0.18)",
+          borderWidth: 2.5,
+          tension: 0.35,
+          fill: true,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointBackgroundColor: PALETTE.amber,
+          pointBorderColor: "#fff",
+          spanGaps: true,
+          yAxisID: "yAvg",
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+        yCount: {
+          beginAtZero: true,
+          position: "left",
+          ticks: { precision: 0, color: PALETTE.coffee },
+          grid: { color: "rgba(120,120,120,0.08)" },
+          title: { display: true, text: "Ratings", color: PALETTE.coffee },
+        },
+        yAvg: {
+          beginAtZero: true,
+          max: 10,
+          position: "right",
+          ticks: { color: PALETTE.amber },
+          grid: { display: false },
+          title: { display: true, text: "Avg score", color: PALETTE.amber },
+        },
+      },
       plugins: {
         legend: {
           position: "bottom",
@@ -168,38 +402,16 @@ export function renderDistribution(ratings) {
         tooltip: {
           callbacks: {
             label: (ctx) => {
-              const pct = total ? ((ctx.parsed / total) * 100).toFixed(0) : 0;
-              return ` ${ctx.parsed} (${pct}%)`;
+              if (ctx.dataset.label === "Ratings/day")
+                return ` ${ctx.parsed.y} rating${ctx.parsed.y === 1 ? "" : "s"}`;
+              return ctx.parsed.y == null ? null : ` Avg ${ctx.parsed.y.toFixed(2)} / 10`;
             },
           },
         },
       },
-      animation: { duration: 700, easing: "easeOutQuart" },
+      animation: { duration: 600, easing: "easeOutQuart" },
     },
-    plugins: [doughnutCenterLabel(total)],
   });
-}
-
-function doughnutCenterLabel(total) {
-  return {
-    id: "ccDoughnutCenter",
-    afterDraw(chart) {
-      const { ctx, chartArea } = chart;
-      if (!chartArea) return;
-      const cx = (chartArea.left + chartArea.right) / 2;
-      const cy = (chartArea.top + chartArea.bottom) / 2;
-      ctx.save();
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = Chart.defaults.color;
-      ctx.font = "700 1.7rem " + Chart.defaults.font.family;
-      ctx.fillText(String(total), cx, cy - 6);
-      ctx.font = "500 .75rem " + Chart.defaults.font.family;
-      ctx.fillStyle = "rgba(120,120,120,0.9)";
-      ctx.fillText("ratings", cx, cy + 16);
-      ctx.restore();
-    },
-  };
 }
 
 export function renderProlificRaters(ratings) {
@@ -354,5 +566,7 @@ function valueLabelPlugin({ axis = "y", suffix = "" } = {}) {
 export function renderCharts(cafes, ratings, minCount = 2) {
   renderTopCafes(cafes, minCount);
   renderDistribution(ratings);
+  renderSubRatingRadar(ratings, document.getElementById("chart-radar-card"));
+  renderActivity(ratings);
   renderProlificRaters(ratings);
 }

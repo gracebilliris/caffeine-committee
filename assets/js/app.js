@@ -574,10 +574,17 @@ function renderLeaderboard() {
 
   rows.forEach((c, i) => {
     const tr = document.createElement("tr");
+    const klass = c.avg < 5 ? "is-red" : c.avg <= 7 ? "is-amber" : "is-green";
+    const pct = Math.max(0, Math.min(100, (c.avg / 10) * 100));
     tr.innerHTML = `
       <td>${i + 1}</td>
       <td>${escapeHtml(c.cafe_name)}</td>
-      <td>${c.avg.toFixed(1)}</td>
+      <td>
+        <span class="lb-avg">
+          <span class="lb-avg-num">${c.avg.toFixed(1)}</span>
+          <span class="lb-avg-track"><span class="lb-avg-fill ${klass}" style="width:${pct}%"></span></span>
+        </span>
+      </td>
       <td>${c.count}</td>
       <td>${fmtAgo(c.last)}</td>
       <td>${c.dist.toFixed(2)} km</td>

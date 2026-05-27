@@ -226,20 +226,28 @@
     <section>
       <h2>Charts</h2>
       <div class="grid charts">
-        <article>
-          <header><strong>Top 10 cafes</strong></header>
+        <article class="chart-wide">
+          <header><strong>🏆 Top cafes</strong> <small class="muted">avg score, min 2 ratings</small></header>
           <canvas id="chart-top"></canvas>
         </article>
         <article>
-          <header><strong>Rating distribution</strong></header>
+          <header><strong>📊 Rating distribution</strong> <small class="muted">how the team scores</small></header>
           <canvas id="chart-dist"></canvas>
         </article>
+        <article id="chart-radar-card">
+          <header><strong>🎯 Average breakdown</strong> <small class="muted">taste · price · vibes · service</small></header>
+          <canvas id="chart-radar"></canvas>
+        </article>
+        <article class="chart-wide">
+          <header><strong>📈 Rating activity</strong> <small class="muted">last 30 days</small></header>
+          <canvas id="chart-activity"></canvas>
+        </article>
         <article>
-          <header><strong>Most prolific raters</strong></header>
+          <header><strong>☕ Most prolific raters</strong></header>
           <canvas id="chart-raters"></canvas>
         </article>
         <article id="chart-teams-card" hidden>
-          <header><strong>Team averages</strong></header>
+          <header><strong>👥 Team averages</strong></header>
           <canvas id="chart-teams"></canvas>
         </article>
       </div>
