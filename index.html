@@ -12,10 +12,15 @@
 </head>
 <body>
   <header class="container">
-    <hgroup>
-      <h1>☕ Caffeine Committee</h1>
-      <p>Ranking Sydney CBD coffee, one latte at a time.</p>
-    </hgroup>
+    <div class="header-row">
+      <hgroup>
+        <h1>☕ Caffeine Committee</h1>
+        <p>Ranking Sydney CBD coffee, one latte at a time.</p>
+      </hgroup>
+      <div id="auth-area" class="auth-area">
+        <button type="button" id="sign-in-btn" class="secondary">Sign in</button>
+      </div>
+    </div>
     <p>
       <a href="https://www.google.com/maps/search/?api=1&query=50+Martin+Place+Sydney"
          target="_blank" rel="noopener">View 50 Martin Place →</a>
@@ -30,6 +35,17 @@
         <code>supabaseUrl</code> and <code>supabaseAnonKey</code> to enable saving and live updates.
       </article>
     </div>
+
+    <section id="my-teams-section" hidden>
+      <header class="row-between">
+        <h2>My Teams</h2>
+        <div class="my-teams-actions">
+          <button type="button" id="create-team-btn" class="secondary outline">+ Create team</button>
+          <button type="button" id="join-team-btn"   class="secondary outline">Join with code</button>
+        </div>
+      </header>
+      <div id="my-teams-list" class="my-teams-list"></div>
+    </section>
 
     <section id="team-filter-section" hidden>
       <div class="team-filter">
@@ -130,9 +146,12 @@
 
           <label>
             Team <small>(optional)</small>
-            <input type="text" id="team" name="team" list="team-options"
-                   placeholder="e.g. Engineering" autocomplete="off" />
-            <datalist id="team-options"></datalist>
+            <select id="team_select" name="team_id">
+              <option value="">No team</option>
+            </select>
+            <small class="muted hint-row">
+              <span id="team-hint">Sign in and join a team to tag this rating.</span>
+            </small>
           </label>
 
           <label>
@@ -228,8 +247,47 @@
   </main>
 
   <footer class="container">
-    <small>Built with Leaflet, OpenStreetMap, Firebase, Chart.js, and Pico.css.</small>
+    <small>Built with Leaflet, OpenStreetMap, Photon, Supabase, Chart.js, and Pico.css.</small>
   </footer>
+
+  <dialog id="auth-dialog">
+    <article>
+      <header>
+        <button aria-label="Close" rel="prev" data-close></button>
+        <strong>Sign in</strong>
+      </header>
+      <p class="muted">We'll email you a magic link — no passwords.</p>
+      <form id="auth-form">
+        <label>
+          Email
+          <input type="email" id="auth-email" required placeholder="you@work.com" />
+        </label>
+        <button type="submit" id="auth-submit">Send magic link</button>
+        <p id="auth-status" class="status" hidden></p>
+      </form>
+    </article>
+  </dialog>
+
+  <dialog id="team-dialog">
+    <article>
+      <header>
+        <button aria-label="Close" rel="prev" data-close></button>
+        <strong id="team-dialog-title">Create team</strong>
+      </header>
+      <form id="team-form">
+        <label id="team-name-label">
+          Team name
+          <input type="text" id="team-name" placeholder="e.g. Engineering" />
+        </label>
+        <label id="team-code-label" hidden>
+          Join code
+          <input type="text" id="team-code" placeholder="6-character code" autocomplete="off" />
+        </label>
+        <button type="submit" id="team-submit">Create</button>
+        <p id="team-status" class="status" hidden></p>
+      </form>
+    </article>
+  </dialog>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>

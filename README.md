@@ -63,6 +63,26 @@ caffeine-committee/
 5. **Project Settings → API** → copy the **Project URL** and **anon public** key.
 6. Paste both into `assets/js/config.js`, replacing the `REPLACE_ME` placeholders.
 
+### 1b. Add sub-ratings + team tag (one-off)
+
+Run in **SQL Editor** to enable optional taste/price/vibes/service ratings:
+
+```sql
+alter table ratings
+  add column if not exists team    text,
+  add column if not exists taste   smallint check (taste between 1 and 5),
+  add column if not exists price   smallint check (price between 1 and 5),
+  add column if not exists vibes   smallint check (vibes between 1 and 5),
+  add column if not exists service smallint check (service between 1 and 5);
+```
+
+### 1c. Enable accounts + real teams (Option B)
+
+Magic-link sign-in, joinable teams with codes, and ratings tied to a user.
+Run `migrations/option-b-auth-and-teams.sql` in **SQL Editor**, then in
+**Authentication → Providers** make sure **Email** is enabled (it is by default
+on free tier; magic links work out of the box).
+
 ### 2. Deploy
 
 1. Push to `main`.
@@ -96,7 +116,7 @@ Table: `ratings`
 
 ## Caveats
 
-- No auth — anyone with the URL can submit ratings. Fine for an internal tool.
+- Writes require sign-in via magic link; reads remain public.
 - The Supabase `anon` key is public. That's by design; Row Level Security protects writes.
 - Be gentle with Nominatim — search is human-triggered and well within fair-use.
 - Duplicate cafes can happen; clean up manually in the Supabase Table Editor.

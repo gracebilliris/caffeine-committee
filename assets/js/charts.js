@@ -257,23 +257,24 @@ export function renderProlificRaters(ratings) {
   });
 }
 
-export function renderTeamChart(ratings, cardEl) {
+export function renderTeamChart(ratings, cardEl, teamNameById) {
   applyGlobalDefaults();
   destroy("teams");
   const el = document.getElementById("chart-teams");
   if (!el) return;
 
-  // Aggregate avg + count per team.
+  // Aggregate avg + count per team_id.
   const map = new Map();
   for (const r of ratings) {
-    const t = (r.team || "").trim();
-    if (!t) continue;
-    const e = map.get(t) ?? { sum: 0, n: 0 };
+    const id = r.team_id;
+    if (!id) continue;
+    const e = map.get(id) ?? { sum: 0, n: 0 };
     e.sum += r.rating; e.n += 1;
-    map.set(t, e);
+    map.set(id, e);
   }
+  const resolve = teamNameById || ((id) => id);
   const teams = [...map.entries()]
-    .map(([name, { sum, n }]) => ({ name, avg: sum / n, count: n }))
+    .map(([id, { sum, n }]) => ({ name: resolve(id) || "Unknown team", avg: sum / n, count: n }))
     .sort((a, b) => b.avg - a.avg);
 
   if (cardEl) cardEl.hidden = teams.length === 0;

@@ -2,19 +2,16 @@ import { MARTIN_PLACE, isConfigured } from "./config.js";
 import { subscribeRatings, addRating } from "./db.js";
 import { initMap, renderMarkers, onMapClick, onRateCafe, setPin, flyTo } from "./map.js";
 import { renderCharts, renderTeamChart } from "./charts.js";
+import {
+  initAuth, getAuthState, onAuthChange,
+  signInWithMagicLink, signOut,
+} from "./auth.js";
+import {
+  initTeams, getTeamsState, onTeamsChange,
+  createTeam, joinByCode, leaveTeam, teamById,
+} from "./teams.js";
 
 const SUB_KEYS = ["taste", "price", "vibes", "service"];
-
-// FUTURE (Option B): replace the free-text "team" tag with real teams.
-// Steps would be:
-//   1. Add Supabase Auth (magic link or Google).
-//   2. New tables: teams, team_members. Add team_id (uuid) to ratings.
-//   3. RLS: ratings.select can stay public, but writes require auth.user.id
-//      to be a member of the row's team_id.
-//   4. Replace the localStorage name/team with current_user.profile,
-//      and the pill bar with the user's joined teams.
-// For now we keep the lightweight self-identified `team` text field —
-// good enough for an internal CBD coffee crew.
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,8 +28,8 @@ const els = {
   ratingRange: $("rating_range"),
   ratingOut: $("rating_out"),
   by: $("by"),
-  team: $("team"),
-  teamOptions: $("team-options"),
+  teamSelect: $("team_select"),
+  teamHint: $("team-hint"),
   teamFilterSection: $("team-filter-section"),
   teamPills: $("team-pills"),
   chartTeamsCard: $("chart-teams-card"),
@@ -42,15 +39,35 @@ const els = {
   leaderboardBody: document.querySelector("#leaderboard tbody"),
   leaderboardHead: document.querySelector("#leaderboard thead"),
   configWarning: $("config-warning"),
+  // Auth
+  authArea: $("auth-area"),
+  authDialog: $("auth-dialog"),
+  authForm: $("auth-form"),
+  authEmail: $("auth-email"),
+  authStatus: $("auth-status"),
+  // Teams
+  myTeamsSection: $("my-teams-section"),
+  myTeamsList: $("my-teams-list"),
+  createTeamBtn: $("create-team-btn"),
+  joinTeamBtn: $("join-team-btn"),
+  teamDialog: $("team-dialog"),
+  teamDialogTitle: $("team-dialog-title"),
+  teamForm: $("team-form"),
+  teamNameLabel: $("team-name-label"),
+  teamCodeLabel: $("team-code-label"),
+  teamName: $("team-name"),
+  teamCode: $("team-code"),
+  teamSubmit: $("team-submit"),
+  teamStatus: $("team-status"),
 };
 
 const state = {
-  ratings: [],          // all ratings (unfiltered)
-  cafes: [],            // grouped from filtered ratings
-  allCafes: [],         // grouped from all ratings (for cafe suggester)
+  ratings: [],
+  cafes: [],
+  allCafes: [],
   sortKey: "avg",
   sortDir: "desc",
-  teamFilter: "all",    // "all" or a team name
+  teamFilter: "all",   // "all" or a team_id
 };
 
 // ---------- Hero stat cards ----------
@@ -127,7 +144,8 @@ function renderRecent() {
     const klass = r.rating < 5 ? "is-red" : r.rating <= 7 ? "is-amber" : "is-green";
     const card = document.createElement("div");
     card.className = `recent-card ${klass}`;
-    const teamTag = r.team ? ` · <strong>${escapeHtml(r.team)}</strong>` : "";
+    const teamName = r.team_id ? (teamById(r.team_id)?.name ?? null) : null;
+    const teamTag = teamName ? ` · <strong>${escapeHtml(teamName)}</strong>` : "";
     card.innerHTML = `
       <div class="recent-head">
         <span class="recent-cafe">${escapeHtml(r.cafe_name)}</span>
@@ -167,12 +185,6 @@ const savedName = localStorage.getItem("cc_name");
 if (savedName) els.by.value = savedName;
 els.by.addEventListener("change", () => {
   localStorage.setItem("cc_name", els.by.value.trim());
-});
-
-const savedTeam = localStorage.getItem("cc_team");
-if (savedTeam) els.team.value = savedTeam;
-els.team.addEventListener("change", () => {
-  localStorage.setItem("cc_team", els.team.value.trim());
 });
 
 // ---------- Star-rating pickers (taste/price/vibes/service) ----------
@@ -216,19 +228,42 @@ function resetStars() {
 }
 buildStars();
 
-// ---------- Nominatim search ----------
+// ---------- Geocoding (Photon - free, no key, OSM-based but POI-aware) ----------
+// Photon results format: { features: [{ geometry: { coordinates: [lon, lat] }, properties: {...} }] }
+function formatPhotonLabel(p) {
+  const name = p.name;
+  const parts = [
+    [p.housenumber, p.street].filter(Boolean).join(" "),
+    p.suburb || p.district,
+    p.city || p.county,
+    p.country,
+  ].filter(Boolean);
+  return name ? `${name} — ${parts.join(", ")}` : parts.join(", ");
+}
+
 async function searchCafe(q) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&q=${encodeURIComponent(q)}`;
-  const r = await fetch(url, { headers: { "Accept-Language": "en" } });
+  // Bias toward 50 Martin Place so nearby cafes float to the top.
+  const url = `https://photon.komoot.io/api/?lang=en&limit=6&lat=${MARTIN_PLACE.lat}&lon=${MARTIN_PLACE.lng}&q=${encodeURIComponent(q)}`;
+  const r = await fetch(url);
   if (!r.ok) throw new Error("Search failed");
-  return r.json();
+  const data = await r.json();
+  return (data.features || []).map((f) => ({
+    lat: f.geometry.coordinates[1],
+    lon: f.geometry.coordinates[0],
+    display_name: formatPhotonLabel(f.properties),
+    name: f.properties.name,
+    osm_value: f.properties.osm_value,
+  }));
 }
 
 async function reverseGeocode(lat, lng) {
-  const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`;
-  const r = await fetch(url, { headers: { "Accept-Language": "en" } });
+  const url = `https://photon.komoot.io/reverse?lang=en&lat=${lat}&lon=${lng}`;
+  const r = await fetch(url);
   if (!r.ok) return null;
-  return r.json();
+  const data = await r.json();
+  const f = data.features?.[0];
+  if (!f) return null;
+  return { display_name: formatPhotonLabel(f.properties), name: f.properties.name };
 }
 
 // ---------- Debounce helper ----------
@@ -336,8 +371,8 @@ function pickResult(r) {
   els.address.value = r.display_name;
   els.lat.value = lat;
   els.lng.value = lng;
-  if (!els.cafeName.value && r.namedetails?.name) {
-    els.cafeName.value = r.namedetails.name;
+  if (!els.cafeName.value && r.name) {
+    els.cafeName.value = r.name;
   }
   setPin(lat, lng);
   flyTo(lat, lng);
@@ -364,9 +399,11 @@ els.form.addEventListener("submit", async (e) => {
   const lng = Number(els.lng.value);
   const rating = Number(els.rating.value);
   const by = els.by.value.trim();
-  const team = els.team.value.trim();
+  const team_id = els.teamSelect.value || null;
   const comment = els.comment.value.trim();
 
+  const { user, profile } = getAuthState();
+  if (!user) { showStatus("Sign in to submit a rating.", "err"); openAuthDialog(); return; }
   if (!cafe_name || !by) { showStatus("Cafe name and your name are required.", "err"); return; }
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     showStatus("Pick a location: search or click the map.", "err"); return;
@@ -380,9 +417,12 @@ els.form.addEventListener("submit", async (e) => {
 
   els.submitBtn.setAttribute("aria-busy", "true");
   try {
-    await addRating({ cafe_name, address, lat, lng, rating, by, team: team || null, comment, ...subs });
+    await addRating(
+      { cafe_name, address, lat, lng, rating, by, comment, ...subs },
+      { userId: user.id, teamId: team_id },
+    );
     localStorage.setItem("cc_name", by);
-    if (team) localStorage.setItem("cc_team", team);
+    if (team_id) localStorage.setItem("cc_team_id", team_id);
     showStatus("Thanks! Rating saved.", "ok");
     els.cafeName.value = "";
     els.comment.value = "";
@@ -424,18 +464,20 @@ function groupCafes(ratings) {
 
 // ---------- Team filter pills ----------
 function renderTeamPills(allRatings) {
+  const { teams } = getTeamsState();
+  const teamMap = new Map(teams.map((t) => [t.id, t]));
+
   const counts = new Map();
   for (const r of allRatings) {
-    const t = (r.team || "").trim();
-    if (!t) continue;
-    counts.set(t, (counts.get(t) ?? 0) + 1);
+    const id = r.team_id;
+    if (!id) continue;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
   }
-  const teams = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const entries = [...counts.entries()]
+    .map(([id, n]) => ({ id, name: teamMap.get(id)?.name ?? "Unknown team", n }))
+    .sort((a, b) => b.n - a.n);
 
-  // Populate the datalist for the form input.
-  els.teamOptions.innerHTML = teams.map(([t]) => `<option value="${escapeHtml(t)}">`).join("");
-
-  if (!teams.length) {
+  if (!entries.length) {
     els.teamFilterSection.hidden = true;
     els.chartTeamsCard.hidden = true;
     return;
@@ -443,14 +485,14 @@ function renderTeamPills(allRatings) {
   els.teamFilterSection.hidden = false;
 
   els.teamPills.innerHTML = "";
-  const pills = [["all", allRatings.length], ...teams];
-  for (const [name, count] of pills) {
+  const pills = [{ id: "all", name: "All teams", n: allRatings.length }, ...entries];
+  for (const p of pills) {
     const pill = document.createElement("button");
     pill.type = "button";
-    pill.className = "team-pill" + (state.teamFilter === name ? " active" : "");
-    pill.innerHTML = `${name === "all" ? "All teams" : escapeHtml(name)} <span class="count">${count}</span>`;
+    pill.className = "team-pill" + (state.teamFilter === p.id ? " active" : "");
+    pill.innerHTML = `${escapeHtml(p.name)} <span class="count">${p.n}</span>`;
     pill.addEventListener("click", () => {
-      state.teamFilter = name;
+      state.teamFilter = p.id;
       rerenderAll();
     });
     els.teamPills.appendChild(pill);
@@ -563,7 +605,7 @@ let allRatingsCache = [];
 function rerenderAll() {
   const filtered = state.teamFilter === "all"
     ? allRatingsCache
-    : allRatingsCache.filter((r) => (r.team || "").trim() === state.teamFilter);
+    : allRatingsCache.filter((r) => r.team_id === state.teamFilter);
 
   state.ratings = filtered;
   state.cafes = groupCafes(filtered);
@@ -576,7 +618,178 @@ function rerenderAll() {
   renderRecent();
   renderLeaderboard();
   renderCharts(state.cafes, state.ratings, 2);
-  renderTeamChart(allRatingsCache, els.chartTeamsCard);
+  renderTeamChart(allRatingsCache, els.chartTeamsCard, (id) => teamById(id)?.name);
+}
+
+// ---------- Auth UI ----------
+function openAuthDialog() {
+  els.authStatus.hidden = true;
+  els.authForm.reset();
+  els.authDialog.showModal();
+}
+
+els.authDialog.addEventListener("click", (e) => {
+  if (e.target.matches("[data-close]") || e.target === els.authDialog) els.authDialog.close();
+});
+els.teamDialog.addEventListener("click", (e) => {
+  if (e.target.matches("[data-close]") || e.target === els.teamDialog) els.teamDialog.close();
+});
+
+els.authForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = els.authEmail.value.trim();
+  if (!email) return;
+  const btn = document.getElementById("auth-submit");
+  btn.setAttribute("aria-busy", "true");
+  try {
+    await signInWithMagicLink(email);
+    els.authStatus.hidden = false;
+    els.authStatus.className = "status ok";
+    els.authStatus.textContent = `Check ${email} for your sign-in link.`;
+  } catch (err) {
+    els.authStatus.hidden = false;
+    els.authStatus.className = "status err";
+    els.authStatus.textContent = err.message || "Could not send magic link.";
+  } finally {
+    btn.removeAttribute("aria-busy");
+  }
+});
+
+function renderAuthArea() {
+  const { user, profile } = getAuthState();
+  els.authArea.innerHTML = "";
+  if (!user) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "secondary";
+    btn.textContent = "Sign in";
+    btn.addEventListener("click", openAuthDialog);
+    els.authArea.appendChild(btn);
+    return;
+  }
+  const display = profile?.display_name || user.email;
+  const initials = display.slice(0, 2).toUpperCase();
+  const chip = document.createElement("div");
+  chip.className = "auth-chip";
+  chip.innerHTML = `<span class="avatar">${escapeHtml(initials)}</span>
+    <span>${escapeHtml(display)}</span>
+    <button type="button" class="secondary outline" id="sign-out-btn">Sign out</button>`;
+  els.authArea.appendChild(chip);
+  chip.querySelector("#sign-out-btn").addEventListener("click", () => signOut());
+}
+
+// ---------- Teams UI ----------
+function openTeamDialog(mode) {
+  els.teamForm.reset();
+  els.teamStatus.hidden = true;
+  els.teamDialog.dataset.mode = mode;
+  if (mode === "create") {
+    els.teamDialogTitle.textContent = "Create team";
+    els.teamNameLabel.hidden = false;
+    els.teamCodeLabel.hidden = true;
+    els.teamSubmit.textContent = "Create";
+  } else {
+    els.teamDialogTitle.textContent = "Join team";
+    els.teamNameLabel.hidden = true;
+    els.teamCodeLabel.hidden = false;
+    els.teamSubmit.textContent = "Join";
+  }
+  els.teamDialog.showModal();
+}
+
+els.createTeamBtn.addEventListener("click", () => {
+  if (!getAuthState().user) { openAuthDialog(); return; }
+  openTeamDialog("create");
+});
+els.joinTeamBtn.addEventListener("click", () => {
+  if (!getAuthState().user) { openAuthDialog(); return; }
+  openTeamDialog("join");
+});
+
+els.teamForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const mode = els.teamDialog.dataset.mode;
+  els.teamSubmit.setAttribute("aria-busy", "true");
+  try {
+    if (mode === "create") {
+      const t = await createTeam(els.teamName.value);
+      els.teamStatus.hidden = false;
+      els.teamStatus.className = "status ok";
+      els.teamStatus.textContent = `Team "${t.name}" created. Share code: ${t.join_code}`;
+    } else {
+      const t = await joinByCode(els.teamCode.value);
+      els.teamStatus.hidden = false;
+      els.teamStatus.className = "status ok";
+      els.teamStatus.textContent = `Joined "${t.name}".`;
+    }
+    setTimeout(() => els.teamDialog.close(), 1200);
+  } catch (err) {
+    els.teamStatus.hidden = false;
+    els.teamStatus.className = "status err";
+    els.teamStatus.textContent = err.message || "Could not complete action.";
+  } finally {
+    els.teamSubmit.removeAttribute("aria-busy");
+  }
+});
+
+function renderMyTeams() {
+  const { user } = getAuthState();
+  const { teams, myMemberships } = getTeamsState();
+
+  if (!user) {
+    els.myTeamsSection.hidden = true;
+    return;
+  }
+  els.myTeamsSection.hidden = false;
+
+  const mine = teams.filter((t) => myMemberships.includes(t.id));
+  els.myTeamsList.innerHTML = "";
+
+  if (!mine.length) {
+    els.myTeamsList.innerHTML = '<p class="muted">You haven\'t joined any teams yet.</p>';
+  } else {
+    for (const t of mine) {
+      const card = document.createElement("div");
+      card.className = "team-card";
+      card.innerHTML = `
+        <div>
+          <div class="team-card-name">${escapeHtml(t.name)}</div>
+          <code class="team-card-code" title="Click to copy">${escapeHtml(t.join_code)}</code>
+        </div>
+        <button type="button" class="team-leave" title="Leave team">Leave</button>
+      `;
+      card.querySelector(".team-card-code").addEventListener("click", async (e) => {
+        try {
+          await navigator.clipboard.writeText(t.join_code);
+          e.target.textContent = "copied!";
+          setTimeout(() => { e.target.textContent = t.join_code; }, 1200);
+        } catch {}
+      });
+      card.querySelector(".team-leave").addEventListener("click", async () => {
+        if (!confirm(`Leave "${t.name}"?`)) return;
+        try { await leaveTeam(t.id); } catch (err) { alert(err.message); }
+      });
+      els.myTeamsList.appendChild(card);
+    }
+  }
+
+  // Update the form's team selector with the user's joined teams.
+  const prev = els.teamSelect.value;
+  els.teamSelect.innerHTML = '<option value="">No team</option>';
+  for (const t of mine) {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.name;
+    els.teamSelect.appendChild(opt);
+  }
+  const savedTeamId = localStorage.getItem("cc_team_id");
+  if (mine.some((t) => t.id === prev)) els.teamSelect.value = prev;
+  else if (savedTeamId && mine.some((t) => t.id === savedTeamId)) els.teamSelect.value = savedTeamId;
+
+  els.teamSelect.disabled = mine.length === 0;
+  els.teamHint.textContent = mine.length
+    ? "Tag this rating with your team."
+    : "Join or create a team to tag this rating.";
 }
 
 // ---------- Boot ----------
@@ -587,6 +800,13 @@ if (!isConfigured()) {
   allRatingsCache = [];
   rerenderAll();
 } else {
+  initAuth().then(() => {
+    renderAuthArea();
+    initTeams().then(renderMyTeams);
+  });
+  onAuthChange(() => { renderAuthArea(); renderMyTeams(); rerenderAll(); });
+  onTeamsChange(() => { renderMyTeams(); rerenderAll(); });
+
   subscribeRatings(
     (ratings) => {
       allRatingsCache = ratings;

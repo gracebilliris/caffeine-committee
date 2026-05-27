@@ -4,11 +4,16 @@ import { supabaseUrl, supabaseAnonKey, isConfigured } from "./config.js";
 let client = null;
 if (isConfigured()) {
   client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
     realtime: { params: { eventsPerSecond: 5 } },
   });
 }
 
-// Normalize a row so existing code can keep using `created_at.seconds`.
+export function getClient() {
+  if (!client) throw new Error("Supabase not configured");
+  return client;
+}
+
 function normalize(row) {
   const seconds = row.created_at
     ? Math.floor(new Date(row.created_at).getTime() / 1000)
@@ -21,6 +26,8 @@ function normalize(row) {
     lng: Number(row.lng),
     rating: Number(row.rating),
     by: row.by,
+    user_id: row.user_id ?? null,
+    team_id: row.team_id ?? null,
     team: row.team ?? null,
     taste:   row.taste   ?? null,
     price:   row.price   ?? null,
@@ -60,11 +67,7 @@ export function subscribeRatings(onData, onError) {
 
   const channel = client
     .channel("ratings-changes")
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "ratings" },
-      () => refresh(),
-    )
+    .on("postgres_changes", { event: "*", schema: "public", table: "ratings" }, () => refresh())
     .subscribe();
 
   return () => {
@@ -73,7 +76,7 @@ export function subscribeRatings(onData, onError) {
   };
 }
 
-export async function addRating(data) {
+export async function addRating(data, { userId = null, teamId = null } = {}) {
   if (!client) throw new Error("Supabase not configured");
   const row = {
     cafe_name: data.cafe_name,
@@ -82,7 +85,8 @@ export async function addRating(data) {
     lng: data.lng,
     rating: data.rating,
     by: data.by,
-    team: data.team || null,
+    user_id: userId,
+    team_id: teamId,
     comment: data.comment || null,
   };
   for (const k of ["taste", "price", "vibes", "service"]) {
