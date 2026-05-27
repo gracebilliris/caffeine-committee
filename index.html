@@ -64,15 +64,15 @@
           <label>
             Cafe name
             <input type="text" name="cafe_name" id="cafe_name" required
+                   autocomplete="off"
                    placeholder="e.g. Single Origin Roasters" />
           </label>
+          <ul id="cafe-suggestions" class="search-results suggestions" hidden></ul>
 
           <label>
             Address search
-            <div class="search-row">
-              <input type="text" id="address_query" placeholder="Search a cafe or address" />
-              <button type="button" id="search-btn" class="secondary">Search</button>
-            </div>
+            <input type="text" id="address_query" autocomplete="off"
+                   placeholder="Start typing a cafe or address…" />
           </label>
 
           <ul id="search-results" class="search-results" hidden></ul>
@@ -117,7 +117,7 @@
     </section>
 
     <section id="podium-section">
-      <h2>The Top 3 <small>(min 2 ratings)</small></h2>
+      <h2>The Top 3</h2>
       <div class="podium" id="podium">
         <div class="podium-slot silver" data-rank="2">
           <div class="medal">🥈</div>
@@ -150,10 +150,6 @@
     <section>
       <header class="row-between">
         <h2>Leaderboard</h2>
-        <label class="inline">
-          <input type="checkbox" id="min-ratings-toggle" />
-          Min 2 ratings
-        </label>
       </header>
       <div class="table-wrap">
         <table id="leaderboard">

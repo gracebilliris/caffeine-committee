@@ -6,20 +6,31 @@ let pinMarker = null;
 const callbacks = { onMapClick: null, onRateCafe: null };
 
 export function initMap() {
-  map = L.map("map").setView([MARTIN_PLACE.lat, MARTIN_PLACE.lng], DEFAULT_ZOOM);
+  map = L.map("map", { zoomControl: true, attributionControl: true })
+    .setView([MARTIN_PLACE.lat, MARTIN_PLACE.lng], DEFAULT_ZOOM);
 
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "© OpenStreetMap contributors",
-  }).addTo(map);
+  // CartoDB "Voyager" — clean, modern, readable.
+  L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    {
+      maxZoom: 20,
+      subdomains: "abcd",
+      attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a>',
+    },
+  ).addTo(map);
 
-  L.marker([MARTIN_PLACE.lat, MARTIN_PLACE.lng], { opacity: 0.6 })
-    .addTo(map)
-    .bindPopup("50 Martin Place");
+  // Office marker (Martin Place) — small, subdued.
+  const officeIcon = L.divIcon({
+    className: "cc-office-icon",
+    html: '<div style="background:#1d1916;color:#fff;font-size:.7rem;padding:2px 8px;border-radius:999px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25);">🏢 50 Martin Place</div>',
+    iconSize: [0, 0],
+    iconAnchor: [50, 12],
+  });
+  L.marker([MARTIN_PLACE.lat, MARTIN_PLACE.lng], { icon: officeIcon, interactive: false }).addTo(map);
 
   markerLayer = L.layerGroup().addTo(map);
 
-  map.on("click", async (e) => {
+  map.on("click", (e) => {
     setPin(e.latlng.lat, e.latlng.lng);
     callbacks.onMapClick?.(e.latlng.lat, e.latlng.lng);
   });
@@ -30,12 +41,32 @@ export function initMap() {
 export function onMapClick(fn) { callbacks.onMapClick = fn; }
 export function onRateCafe(fn) { callbacks.onRateCafe = fn; }
 
+const pinIcon = () => L.divIcon({
+  className: "cc-pin-wrap",
+  html: `<div class="cc-pin">
+    <svg viewBox="0 0 36 48" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#e0a526"/>
+          <stop offset="100%" stop-color="#6f4e37"/>
+        </linearGradient>
+      </defs>
+      <path d="M18 0C8 0 0 8 0 18c0 13 18 30 18 30s18-17 18-30C36 8 28 0 18 0z" fill="url(#pg)"/>
+      <circle cx="18" cy="18" r="7" fill="#fff"/>
+      <text x="18" y="22" text-anchor="middle" font-size="11">☕</text>
+    </svg>
+  </div>`,
+  iconSize: [36, 48],
+  iconAnchor: [18, 46],
+  popupAnchor: [0, -42],
+});
+
 export function setPin(lat, lng) {
   if (!map) return;
   if (pinMarker) {
     pinMarker.setLatLng([lat, lng]);
   } else {
-    pinMarker = L.marker([lat, lng], { draggable: true }).addTo(map);
+    pinMarker = L.marker([lat, lng], { icon: pinIcon(), draggable: true }).addTo(map);
     pinMarker.on("dragend", () => {
       const { lat, lng } = pinMarker.getLatLng();
       callbacks.onMapClick?.(lat, lng);

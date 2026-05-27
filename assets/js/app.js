@@ -8,8 +8,8 @@ const $ = (id) => document.getElementById(id);
 const els = {
   form: $("rating-form"),
   cafeName: $("cafe_name"),
+  cafeSuggestions: $("cafe-suggestions"),
   addressQuery: $("address_query"),
-  searchBtn: $("search-btn"),
   searchResults: $("search-results"),
   address: $("address"),
   lat: $("lat"),
@@ -21,7 +21,6 @@ const els = {
   comment: $("comment"),
   submitBtn: $("submit-btn"),
   status: $("form-status"),
-  minRatingsToggle: $("min-ratings-toggle"),
   leaderboardBody: document.querySelector("#leaderboard tbody"),
   leaderboardHead: document.querySelector("#leaderboard thead"),
   configWarning: $("config-warning"),
@@ -32,7 +31,6 @@ const state = {
   cafes: [],
   sortKey: "avg",
   sortDir: "desc",
-  minRatings: false,
 };
 
 // ---------- Hero stat cards ----------
@@ -153,16 +151,32 @@ async function reverseGeocode(lat, lng) {
   return r.json();
 }
 
-els.searchBtn.addEventListener("click", async () => {
-  const q = els.addressQuery.value.trim();
-  if (!q) return;
-  els.searchBtn.setAttribute("aria-busy", "true");
-  els.searchResults.innerHTML = "";
-  els.searchResults.hidden = true;
+// ---------- Debounce helper ----------
+function debounce(fn, ms) {
+  let t = null;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
+
+// ---------- Address autocomplete (Nominatim, debounced) ----------
+let lastAddressQuery = "";
+
+async function runAddressSearch(q) {
+  if (q === lastAddressQuery) return;
+  lastAddressQuery = q;
+  if (q.length < 3) {
+    els.searchResults.hidden = true;
+    els.searchResults.innerHTML = "";
+    return;
+  }
+  els.addressQuery.setAttribute("aria-busy", "true");
   try {
     const results = await searchCafe(q);
+    els.searchResults.innerHTML = "";
     if (!results.length) {
-      showStatus("No matches found.", "err");
+      els.searchResults.hidden = true;
       return;
     }
     for (const r of results) {
@@ -178,9 +192,64 @@ els.searchBtn.addEventListener("click", async () => {
   } catch (e) {
     showStatus(e.message, "err");
   } finally {
-    els.searchBtn.removeAttribute("aria-busy");
+    els.addressQuery.removeAttribute("aria-busy");
   }
+}
+
+els.addressQuery.addEventListener("input", debounce(() => {
+  runAddressSearch(els.addressQuery.value.trim());
+}, 350));
+
+els.addressQuery.addEventListener("blur", () => {
+  setTimeout(() => { els.searchResults.hidden = true; }, 150);
 });
+els.addressQuery.addEventListener("focus", () => {
+  if (els.searchResults.children.length) els.searchResults.hidden = false;
+});
+
+// ---------- Cafe name suggester (match existing cafes) ----------
+function renderCafeSuggestions(query) {
+  const q = query.trim().toLowerCase();
+  els.cafeSuggestions.innerHTML = "";
+  if (q.length < 2 || !state.cafes.length) {
+    els.cafeSuggestions.hidden = true;
+    return;
+  }
+  const matches = state.cafes
+    .filter((c) => c.cafe_name.toLowerCase().includes(q))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  if (!matches.length) { els.cafeSuggestions.hidden = true; return; }
+
+  for (const c of matches) {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <span>${escapeHtml(c.cafe_name)}</span>
+      <span class="badge">${c.avg.toFixed(1)}</span>
+      <span class="hint">${c.count} rating${c.count === 1 ? "" : "s"}</span>
+    `;
+    li.title = "Use this existing cafe (keeps ratings averaged together)";
+    li.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      els.cafeName.value = c.cafe_name;
+      els.address.value = c.address || "";
+      els.lat.value = c.lat;
+      els.lng.value = c.lng;
+      setPin(c.lat, c.lng);
+      flyTo(c.lat, c.lng, 17);
+      els.cafeSuggestions.hidden = true;
+    });
+    els.cafeSuggestions.appendChild(li);
+  }
+  els.cafeSuggestions.hidden = false;
+}
+
+els.cafeName.addEventListener("input", () => renderCafeSuggestions(els.cafeName.value));
+els.cafeName.addEventListener("blur", () => {
+  setTimeout(() => { els.cafeSuggestions.hidden = true; }, 150);
+});
+els.cafeName.addEventListener("focus", () => renderCafeSuggestions(els.cafeName.value));
 
 function pickResult(r) {
   const lat = Number(r.lat), lng = Number(r.lon);
@@ -297,7 +366,6 @@ function renderLeaderboard() {
     ...c,
     dist: distKm(MARTIN_PLACE, { lat: c.lat, lng: c.lng }),
   }));
-  if (state.minRatings) rows = rows.filter((r) => r.count >= 2);
 
   const dir = state.sortDir === "asc" ? 1 : -1;
   rows.sort((a, b) => {
@@ -349,12 +417,6 @@ els.leaderboardHead.addEventListener("click", (e) => {
   renderLeaderboard();
 });
 
-els.minRatingsToggle.addEventListener("change", () => {
-  state.minRatings = els.minRatingsToggle.checked;
-  renderLeaderboard();
-  renderCharts(state.cafes, state.ratings, state.minRatings ? 2 : 1);
-});
-
 // ---------- Rate-this-cafe button in popups ----------
 onRateCafe((cafe) => {
   els.cafeName.value = cafe.cafe_name;
@@ -386,7 +448,7 @@ if (!isConfigured()) {
       renderPodium();
       renderRecent();
       renderLeaderboard();
-      renderCharts(state.cafes, state.ratings, state.minRatings ? 2 : 1);
+      renderCharts(state.cafes, state.ratings, 2);
     },
     (err) => {
       console.error(err);
