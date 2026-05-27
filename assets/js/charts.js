@@ -135,59 +135,71 @@ export function renderDistribution(ratings) {
   const el = document.getElementById("chart-dist");
   if (!el) return;
 
-  const buckets = new Array(10).fill(0);
-  const labels = [];
-  for (let i = 0; i < 10; i++) labels.push(`${i}–${i + 1}`);
-
+  let harsh = 0, mid = 0, loved = 0;
   for (const r of ratings) {
-    const idx = Math.min(9, Math.max(0, Math.floor(r.rating)));
-    buckets[idx]++;
+    if (r.rating < 5) harsh++;
+    else if (r.rating <= 7) mid++;
+    else loved++;
   }
-
-  const colorForBucket = (i) => (i < 5 ? PALETTE.red : i <= 6 ? PALETTE.amber : PALETTE.green);
+  const total = harsh + mid + loved;
 
   charts.dist = new Chart(el, {
-    type: "bar",
+    type: "doughnut",
     data: {
-      labels,
+      labels: ["Harsh (<5)", "Mixed (5–7)", "Loved (>7)"],
       datasets: [{
-        label: "Ratings",
-        data: buckets,
-        backgroundColor: (ctx) => {
-          const c = colorForBucket(ctx.dataIndex);
-          return makeGradient(ctx.chart.ctx, ctx.chart.chartArea, lighten(c, 0.3), c);
-        },
-        borderRadius: 6,
-        borderSkipped: false,
-        barPercentage: 0.85,
-        categoryPercentage: 0.9,
+        data: [harsh, mid, loved],
+        backgroundColor: [PALETTE.red, PALETTE.amber, PALETTE.green],
+        borderColor: "transparent",
+        borderWidth: 0,
+        hoverOffset: 10,
+        spacing: 2,
       }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: 16 } },
+      cutout: "68%",
       plugins: {
-        legend: { display: false },
+        legend: {
+          position: "bottom",
+          labels: { boxWidth: 12, boxHeight: 12, usePointStyle: true, pointStyle: "circle" },
+        },
         tooltip: {
           callbacks: {
-            title: (items) => `Score ${items[0].label}`,
-            label: (ctx) => ` ${ctx.parsed.y} rating${ctx.parsed.y === 1 ? "" : "s"}`,
+            label: (ctx) => {
+              const pct = total ? ((ctx.parsed / total) * 100).toFixed(0) : 0;
+              return ` ${ctx.parsed} (${pct}%)`;
+            },
           },
         },
       },
-      scales: {
-        x: { grid: { display: false } },
-        y: {
-          beginAtZero: true,
-          ticks: { precision: 0 },
-          grid: { color: "rgba(120,120,120,0.08)" },
-        },
-      },
-      animation: { duration: 600, easing: "easeOutQuart" },
+      animation: { duration: 700, easing: "easeOutQuart" },
     },
-    plugins: [valueLabelPlugin({ axis: "y" })],
+    plugins: [doughnutCenterLabel(total)],
   });
+}
+
+function doughnutCenterLabel(total) {
+  return {
+    id: "ccDoughnutCenter",
+    afterDraw(chart) {
+      const { ctx, chartArea } = chart;
+      if (!chartArea) return;
+      const cx = (chartArea.left + chartArea.right) / 2;
+      const cy = (chartArea.top + chartArea.bottom) / 2;
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = Chart.defaults.color;
+      ctx.font = "700 1.7rem " + Chart.defaults.font.family;
+      ctx.fillText(String(total), cx, cy - 6);
+      ctx.font = "500 .75rem " + Chart.defaults.font.family;
+      ctx.fillStyle = "rgba(120,120,120,0.9)";
+      ctx.fillText("ratings", cx, cy + 16);
+      ctx.restore();
+    },
+  };
 }
 
 export function renderProlificRaters(ratings) {

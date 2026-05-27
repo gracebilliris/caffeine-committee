@@ -35,6 +35,82 @@ const state = {
   minRatings: false,
 };
 
+// ---------- Hero stat cards ----------
+function renderHeroStats() {
+  const { ratings, cafes } = state;
+  const total = ratings.length;
+  const avg = total ? ratings.reduce((s, r) => s + r.rating, 0) / total : null;
+  const champ = [...cafes].filter((c) => c.count >= 2).sort((a, b) => b.avg - a.avg)[0]
+              ?? [...cafes].sort((a, b) => b.avg - a.avg)[0];
+
+  document.getElementById("stat-total").textContent = total;
+  document.getElementById("stat-cafes").textContent = cafes.length;
+  document.getElementById("stat-avg").textContent = avg == null ? "—" : avg.toFixed(1);
+  document.getElementById("stat-top").textContent = champ
+    ? `${champ.cafe_name} · ${champ.avg.toFixed(1)}`
+    : "—";
+}
+
+// ---------- Top 3 podium ----------
+function renderPodium() {
+  const top3 = [...state.cafes]
+    .filter((c) => c.count >= 2)
+    .sort((a, b) => b.avg - a.avg)
+    .slice(0, 3);
+
+  const slots = [
+    document.querySelector('.podium-slot[data-rank="1"]'),
+    document.querySelector('.podium-slot[data-rank="2"]'),
+    document.querySelector('.podium-slot[data-rank="3"]'),
+  ];
+  slots.forEach((slot, i) => {
+    if (!slot) return;
+    const cafe = top3[i];
+    const nameEl = slot.querySelector(".podium-name");
+    const scoreEl = slot.querySelector(".podium-score");
+    const countEl = slot.querySelector(".podium-count");
+    if (cafe) {
+      nameEl.textContent = cafe.cafe_name;
+      scoreEl.textContent = cafe.avg.toFixed(1);
+      countEl.textContent = `${cafe.count} rating${cafe.count === 1 ? "" : "s"}`;
+      slot.style.cursor = "pointer";
+      slot.onclick = () => flyTo(cafe.lat, cafe.lng, 17);
+    } else {
+      nameEl.textContent = "—";
+      scoreEl.textContent = "—";
+      countEl.textContent = "Need 2+ ratings";
+      slot.style.cursor = "default";
+      slot.onclick = null;
+    }
+  });
+}
+
+// ---------- Recent ratings feed ----------
+function renderRecent() {
+  const list = document.getElementById("recent-list");
+  list.innerHTML = "";
+  const recent = state.ratings.slice(0, 8);
+  if (!recent.length) {
+    list.innerHTML = '<p class="muted">No ratings yet — be the first to rate a cafe!</p>';
+    return;
+  }
+  for (const r of recent) {
+    const klass = r.rating < 5 ? "is-red" : r.rating <= 7 ? "is-amber" : "is-green";
+    const card = document.createElement("div");
+    card.className = `recent-card ${klass}`;
+    card.innerHTML = `
+      <div class="recent-head">
+        <span class="recent-cafe">${escapeHtml(r.cafe_name)}</span>
+        <span class="recent-rating">${r.rating.toFixed(1)}</span>
+      </div>
+      <div class="recent-meta">by ${escapeHtml(r.by)} · ${fmtAgo(r.created_at?.seconds)}</div>
+      ${r.comment ? `<div class="recent-comment">“${escapeHtml(r.comment)}”</div>` : ""}
+    `;
+    card.addEventListener("click", () => flyTo(r.lat, r.lng, 17));
+    list.appendChild(card);
+  }
+}
+
 function showStatus(msg, kind) {
   els.status.hidden = false;
   els.status.textContent = msg;
@@ -295,6 +371,9 @@ initMap();
 
 if (!isConfigured()) {
   els.configWarning.hidden = false;
+  renderHeroStats();
+  renderPodium();
+  renderRecent();
   renderLeaderboard();
   renderCharts([], [], 1);
 } else {
@@ -303,6 +382,9 @@ if (!isConfigured()) {
       state.ratings = ratings;
       state.cafes = groupCafes(ratings);
       renderMarkers(state.cafes);
+      renderHeroStats();
+      renderPodium();
+      renderRecent();
       renderLeaderboard();
       renderCharts(state.cafes, state.ratings, state.minRatings ? 2 : 1);
     },
