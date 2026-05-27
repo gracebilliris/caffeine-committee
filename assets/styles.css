@@ -338,7 +338,9 @@ dialog#team-dialog article { max-width: 420px; }
   border-bottom: 1px solid var(--pico-muted-border-color);
   font-size: .9rem;
   display: flex; align-items: baseline; gap: .5rem;
+  justify-content: space-between;
 }
+.search-results li small { white-space: nowrap; flex-shrink: 0; }
 .search-results li:last-child { border-bottom: none; }
 .search-results li:hover,
 .search-results li[aria-selected="true"] { background: var(--pico-secondary-background); }
