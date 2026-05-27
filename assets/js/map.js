@@ -119,11 +119,21 @@ export function renderMarkers(cafes) {
           .join("")}</ul>`
       : "";
 
+    const subKeys = ["taste", "price", "vibes", "service"];
+    const subsHtml = cafe.subs && subKeys.some((k) => cafe.subs[k] != null)
+      ? `<div class="sub-bars">${subKeys.filter((k) => cafe.subs[k] != null).map((k) => {
+          const pct = (cafe.subs[k] / 5) * 100;
+          return `<div class="sub-bar"><span>${k[0].toUpperCase() + k.slice(1)} ${cafe.subs[k].toFixed(1)}</span>
+            <span class="track"><span class="fill" style="width:${pct}%"></span></span></div>`;
+        }).join("")}</div>`
+      : "";
+
     const html = `
       <div class="popup-cafe">
         <h4>${escapeHtml(cafe.cafe_name)}</h4>
         <div><span class="avg">${cafe.avg.toFixed(1)}</span> / 10
           <small>(${cafe.count} rating${cafe.count === 1 ? "" : "s"})</small></div>
+        ${subsHtml}
         ${commentsHtml}
         <button type="button" data-cafe-key="${escapeHtml(cafe.key)}">Rate this cafe</button>
       </div>`;

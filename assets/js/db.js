@@ -21,6 +21,11 @@ function normalize(row) {
     lng: Number(row.lng),
     rating: Number(row.rating),
     by: row.by,
+    team: row.team ?? null,
+    taste:   row.taste   ?? null,
+    price:   row.price   ?? null,
+    vibes:   row.vibes   ?? null,
+    service: row.service ?? null,
     comment: row.comment ?? "",
     created_at: { seconds },
   };
@@ -70,14 +75,19 @@ export function subscribeRatings(onData, onError) {
 
 export async function addRating(data) {
   if (!client) throw new Error("Supabase not configured");
-  const { error } = await client.from("ratings").insert({
+  const row = {
     cafe_name: data.cafe_name,
     address: data.address,
     lat: data.lat,
     lng: data.lng,
     rating: data.rating,
     by: data.by,
+    team: data.team || null,
     comment: data.comment || null,
-  });
+  };
+  for (const k of ["taste", "price", "vibes", "service"]) {
+    if (Number.isFinite(data[k]) && data[k] > 0) row[k] = data[k];
+  }
+  const { error } = await client.from("ratings").insert(row);
   if (error) throw error;
 }

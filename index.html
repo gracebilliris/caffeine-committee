@@ -31,6 +31,13 @@
       </article>
     </div>
 
+    <section id="team-filter-section" hidden>
+      <div class="team-filter">
+        <span class="team-filter-label">View:</span>
+        <div class="team-pills" id="team-pills"></div>
+      </div>
+    </section>
+
     <section id="hero-stats-section">
       <div class="hero-stats">
         <div class="stat-card">
@@ -94,9 +101,38 @@
                    min="0" max="10" step="0.1" value="7.5" required />
           </label>
 
+          <details class="sub-ratings">
+            <summary>Optional breakdown</summary>
+            <div class="sub-grid">
+              <div class="sub-row" data-sub="taste">
+                <span class="sub-label">Taste</span>
+                <div class="stars" role="radiogroup" aria-label="Taste"></div>
+              </div>
+              <div class="sub-row" data-sub="price">
+                <span class="sub-label">Price</span>
+                <div class="stars" role="radiogroup" aria-label="Price"></div>
+              </div>
+              <div class="sub-row" data-sub="vibes">
+                <span class="sub-label">Vibes</span>
+                <div class="stars" role="radiogroup" aria-label="Vibes"></div>
+              </div>
+              <div class="sub-row" data-sub="service">
+                <span class="sub-label">Service</span>
+                <div class="stars" role="radiogroup" aria-label="Service"></div>
+              </div>
+            </div>
+          </details>
+
           <label>
             By who
             <input type="text" id="by" name="by" required placeholder="Your name" />
+          </label>
+
+          <label>
+            Team <small>(optional)</small>
+            <input type="text" id="team" name="team" list="team-options"
+                   placeholder="e.g. Engineering" autocomplete="off" />
+            <datalist id="team-options"></datalist>
           </label>
 
           <label>
@@ -182,6 +218,10 @@
         <article>
           <header><strong>Most prolific raters</strong></header>
           <canvas id="chart-raters"></canvas>
+        </article>
+        <article id="chart-teams-card" hidden>
+          <header><strong>Team averages</strong></header>
+          <canvas id="chart-teams"></canvas>
         </article>
       </div>
     </section>

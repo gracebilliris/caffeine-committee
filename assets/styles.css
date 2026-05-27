@@ -20,6 +20,92 @@ header.container hgroup h1 {
 
 .muted { color: var(--pico-muted-color); }
 
+/* ===== Team filter pills ===== */
+.team-filter {
+  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.team-filter-label {
+  font-size: .8rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--pico-muted-color); font-weight: 600;
+}
+.team-pills { display: flex; gap: .4rem; flex-wrap: wrap; }
+.team-pill {
+  background: var(--pico-card-background-color);
+  border: 1px solid var(--pico-muted-border-color);
+  color: var(--pico-color);
+  padding: .25rem .8rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: .85rem;
+  font-weight: 500;
+  transition: all .15s ease;
+  display: inline-flex; align-items: center; gap: .35rem;
+}
+.team-pill:hover { border-color: var(--cc-coffee); transform: translateY(-1px); }
+.team-pill.active {
+  background: linear-gradient(135deg, var(--cc-coffee), var(--cc-amber));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(111, 78, 55, 0.3);
+}
+.team-pill .count {
+  background: rgba(0,0,0,0.1);
+  font-size: .7rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.team-pill.active .count { background: rgba(255,255,255,0.25); }
+
+/* ===== Sub-ratings (taste/price/vibes/service) ===== */
+.sub-ratings {
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 10px;
+  padding: .5rem .75rem;
+  margin-bottom: 1rem;
+}
+.sub-ratings summary {
+  cursor: pointer;
+  font-size: .9rem;
+  color: var(--pico-muted-color);
+  font-weight: 500;
+}
+.sub-ratings[open] summary { margin-bottom: .5rem; }
+.sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem .8rem; }
+@media (max-width: 540px) { .sub-grid { grid-template-columns: 1fr; } }
+.sub-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+  font-size: .85rem;
+}
+.sub-label { color: var(--pico-muted-color); font-weight: 500; }
+.stars { display: inline-flex; gap: 2px; user-select: none; }
+.stars button {
+  all: unset;
+  cursor: pointer;
+  font-size: 1.05rem;
+  color: var(--pico-muted-border-color);
+  transition: transform .1s ease;
+  line-height: 1;
+}
+.stars button:hover { transform: scale(1.15); }
+.stars button.on { color: var(--cc-amber); }
+.stars .clear {
+  font-size: .7rem;
+  color: var(--pico-muted-color);
+  margin-left: .35rem;
+}
+
+/* Mini bar on recent cards / popups */
+.sub-bars { display: grid; grid-template-columns: 1fr 1fr; gap: .15rem .6rem; margin-top: .4rem; font-size: .72rem; }
+.sub-bar { display: flex; align-items: center; gap: .35rem; color: var(--pico-muted-color); }
+.sub-bar .track {
+  flex: 1; height: 4px; border-radius: 999px;
+  background: var(--pico-muted-border-color); overflow: hidden;
+}
+.sub-bar .fill { height: 100%; background: linear-gradient(90deg, var(--cc-amber), var(--cc-coffee)); }
+
 /* ===== Hero stats ===== */
 .hero-stats {
   display: grid;

@@ -1,7 +1,20 @@
 import { MARTIN_PLACE, isConfigured } from "./config.js";
 import { subscribeRatings, addRating } from "./db.js";
 import { initMap, renderMarkers, onMapClick, onRateCafe, setPin, flyTo } from "./map.js";
-import { renderCharts } from "./charts.js";
+import { renderCharts, renderTeamChart } from "./charts.js";
+
+const SUB_KEYS = ["taste", "price", "vibes", "service"];
+
+// FUTURE (Option B): replace the free-text "team" tag with real teams.
+// Steps would be:
+//   1. Add Supabase Auth (magic link or Google).
+//   2. New tables: teams, team_members. Add team_id (uuid) to ratings.
+//   3. RLS: ratings.select can stay public, but writes require auth.user.id
+//      to be a member of the row's team_id.
+//   4. Replace the localStorage name/team with current_user.profile,
+//      and the pill bar with the user's joined teams.
+// For now we keep the lightweight self-identified `team` text field —
+// good enough for an internal CBD coffee crew.
 
 const $ = (id) => document.getElementById(id);
 
@@ -18,6 +31,11 @@ const els = {
   ratingRange: $("rating_range"),
   ratingOut: $("rating_out"),
   by: $("by"),
+  team: $("team"),
+  teamOptions: $("team-options"),
+  teamFilterSection: $("team-filter-section"),
+  teamPills: $("team-pills"),
+  chartTeamsCard: $("chart-teams-card"),
   comment: $("comment"),
   submitBtn: $("submit-btn"),
   status: $("form-status"),
@@ -27,10 +45,12 @@ const els = {
 };
 
 const state = {
-  ratings: [],
-  cafes: [],
+  ratings: [],          // all ratings (unfiltered)
+  cafes: [],            // grouped from filtered ratings
+  allCafes: [],         // grouped from all ratings (for cafe suggester)
   sortKey: "avg",
   sortDir: "desc",
+  teamFilter: "all",    // "all" or a team name
 };
 
 // ---------- Hero stat cards ----------
@@ -84,6 +104,17 @@ function renderPodium() {
 }
 
 // ---------- Recent ratings feed ----------
+function subBarsHtml(r) {
+  const rows = SUB_KEYS
+    .filter((k) => Number.isFinite(r[k]) && r[k] > 0)
+    .map((k) => {
+      const pct = (r[k] / 5) * 100;
+      return `<div class="sub-bar"><span>${k[0].toUpperCase() + k.slice(1)}</span>
+        <span class="track"><span class="fill" style="width:${pct}%"></span></span></div>`;
+    });
+  return rows.length ? `<div class="sub-bars">${rows.join("")}</div>` : "";
+}
+
 function renderRecent() {
   const list = document.getElementById("recent-list");
   list.innerHTML = "";
@@ -96,13 +127,15 @@ function renderRecent() {
     const klass = r.rating < 5 ? "is-red" : r.rating <= 7 ? "is-amber" : "is-green";
     const card = document.createElement("div");
     card.className = `recent-card ${klass}`;
+    const teamTag = r.team ? ` · <strong>${escapeHtml(r.team)}</strong>` : "";
     card.innerHTML = `
       <div class="recent-head">
         <span class="recent-cafe">${escapeHtml(r.cafe_name)}</span>
         <span class="recent-rating">${r.rating.toFixed(1)}</span>
       </div>
-      <div class="recent-meta">by ${escapeHtml(r.by)} · ${fmtAgo(r.created_at?.seconds)}</div>
+      <div class="recent-meta">by ${escapeHtml(r.by)}${teamTag} · ${fmtAgo(r.created_at?.seconds)}</div>
       ${r.comment ? `<div class="recent-comment">“${escapeHtml(r.comment)}”</div>` : ""}
+      ${subBarsHtml(r)}
     `;
     card.addEventListener("click", () => flyTo(r.lat, r.lng, 17));
     list.appendChild(card);
@@ -129,12 +162,59 @@ els.rating.addEventListener("input", () => {
   els.ratingOut.textContent = v.toFixed(1);
 });
 
-// ---------- localStorage name memory ----------
+// ---------- localStorage name + team memory ----------
 const savedName = localStorage.getItem("cc_name");
 if (savedName) els.by.value = savedName;
 els.by.addEventListener("change", () => {
   localStorage.setItem("cc_name", els.by.value.trim());
 });
+
+const savedTeam = localStorage.getItem("cc_team");
+if (savedTeam) els.team.value = savedTeam;
+els.team.addEventListener("change", () => {
+  localStorage.setItem("cc_team", els.team.value.trim());
+});
+
+// ---------- Star-rating pickers (taste/price/vibes/service) ----------
+const subValues = { taste: 0, price: 0, vibes: 0, service: 0 };
+
+function buildStars() {
+  for (const row of document.querySelectorAll(".sub-row")) {
+    const key = row.dataset.sub;
+    const container = row.querySelector(".stars");
+    container.innerHTML = "";
+    for (let i = 1; i <= 5; i++) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.dataset.value = i;
+      btn.setAttribute("aria-label", `${key} ${i} of 5`);
+      btn.textContent = "★";
+      btn.addEventListener("click", () => {
+        // Click same star → clear; otherwise set.
+        subValues[key] = subValues[key] === i ? 0 : i;
+        paintStars(row, subValues[key]);
+      });
+      container.appendChild(btn);
+    }
+    const clear = document.createElement("span");
+    clear.className = "clear";
+    clear.textContent = "(tap to clear)";
+    container.appendChild(clear);
+  }
+}
+function paintStars(row, value) {
+  row.querySelectorAll("button").forEach((b, i) => {
+    b.classList.toggle("on", i < value);
+  });
+}
+function resetStars() {
+  for (const k of SUB_KEYS) {
+    subValues[k] = 0;
+    const row = document.querySelector(`.sub-row[data-sub="${k}"]`);
+    if (row) paintStars(row, 0);
+  }
+}
+buildStars();
 
 // ---------- Nominatim search ----------
 async function searchCafe(q) {
@@ -211,11 +291,11 @@ els.addressQuery.addEventListener("focus", () => {
 function renderCafeSuggestions(query) {
   const q = query.trim().toLowerCase();
   els.cafeSuggestions.innerHTML = "";
-  if (q.length < 2 || !state.cafes.length) {
+  if (q.length < 2 || !state.allCafes.length) {
     els.cafeSuggestions.hidden = true;
     return;
   }
-  const matches = state.cafes
+  const matches = state.allCafes
     .filter((c) => c.cafe_name.toLowerCase().includes(q))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
@@ -284,6 +364,7 @@ els.form.addEventListener("submit", async (e) => {
   const lng = Number(els.lng.value);
   const rating = Number(els.rating.value);
   const by = els.by.value.trim();
+  const team = els.team.value.trim();
   const comment = els.comment.value.trim();
 
   if (!cafe_name || !by) { showStatus("Cafe name and your name are required.", "err"); return; }
@@ -294,13 +375,18 @@ els.form.addEventListener("submit", async (e) => {
     showStatus("Rating must be between 0 and 10.", "err"); return;
   }
 
+  const subs = {};
+  for (const k of SUB_KEYS) if (subValues[k] > 0) subs[k] = subValues[k];
+
   els.submitBtn.setAttribute("aria-busy", "true");
   try {
-    await addRating({ cafe_name, address, lat, lng, rating, by, comment });
+    await addRating({ cafe_name, address, lat, lng, rating, by, team: team || null, comment, ...subs });
     localStorage.setItem("cc_name", by);
+    if (team) localStorage.setItem("cc_team", team);
     showStatus("Thanks! Rating saved.", "ok");
     els.cafeName.value = "";
     els.comment.value = "";
+    resetStars();
   } catch (err) {
     showStatus(err.message || "Could not save rating.", "err");
   } finally {
@@ -320,12 +406,55 @@ function groupCafes(ratings) {
     }
     map.get(k).ratings.push(r);
   }
-  return [...map.values()].map((c) => ({
-    ...c,
-    avg: c.ratings.reduce((s, r) => s + r.rating, 0) / c.ratings.length,
-    count: c.ratings.length,
-    last: Math.max(...c.ratings.map((r) => r.created_at?.seconds ?? 0)),
-  }));
+  return [...map.values()].map((c) => {
+    const subs = {};
+    for (const k of SUB_KEYS) {
+      const vals = c.ratings.map((r) => r[k]).filter((v) => Number.isFinite(v) && v > 0);
+      subs[k] = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+    }
+    return {
+      ...c,
+      avg: c.ratings.reduce((s, r) => s + r.rating, 0) / c.ratings.length,
+      count: c.ratings.length,
+      last: Math.max(...c.ratings.map((r) => r.created_at?.seconds ?? 0)),
+      subs,
+    };
+  });
+}
+
+// ---------- Team filter pills ----------
+function renderTeamPills(allRatings) {
+  const counts = new Map();
+  for (const r of allRatings) {
+    const t = (r.team || "").trim();
+    if (!t) continue;
+    counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
+  const teams = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+
+  // Populate the datalist for the form input.
+  els.teamOptions.innerHTML = teams.map(([t]) => `<option value="${escapeHtml(t)}">`).join("");
+
+  if (!teams.length) {
+    els.teamFilterSection.hidden = true;
+    els.chartTeamsCard.hidden = true;
+    return;
+  }
+  els.teamFilterSection.hidden = false;
+
+  els.teamPills.innerHTML = "";
+  const pills = [["all", allRatings.length], ...teams];
+  for (const [name, count] of pills) {
+    const pill = document.createElement("button");
+    pill.type = "button";
+    pill.className = "team-pill" + (state.teamFilter === name ? " active" : "");
+    pill.innerHTML = `${name === "all" ? "All teams" : escapeHtml(name)} <span class="count">${count}</span>`;
+    pill.addEventListener("click", () => {
+      state.teamFilter = name;
+      rerenderAll();
+    });
+    els.teamPills.appendChild(pill);
+  }
 }
 
 // ---------- Distance ----------
@@ -428,27 +557,40 @@ onRateCafe((cafe) => {
   els.rating.focus();
 });
 
+// ---------- Render orchestration ----------
+let allRatingsCache = [];
+
+function rerenderAll() {
+  const filtered = state.teamFilter === "all"
+    ? allRatingsCache
+    : allRatingsCache.filter((r) => (r.team || "").trim() === state.teamFilter);
+
+  state.ratings = filtered;
+  state.cafes = groupCafes(filtered);
+  state.allCafes = groupCafes(allRatingsCache);
+
+  renderTeamPills(allRatingsCache);
+  renderMarkers(state.cafes);
+  renderHeroStats();
+  renderPodium();
+  renderRecent();
+  renderLeaderboard();
+  renderCharts(state.cafes, state.ratings, 2);
+  renderTeamChart(allRatingsCache, els.chartTeamsCard);
+}
+
 // ---------- Boot ----------
 initMap();
 
 if (!isConfigured()) {
   els.configWarning.hidden = false;
-  renderHeroStats();
-  renderPodium();
-  renderRecent();
-  renderLeaderboard();
-  renderCharts([], [], 1);
+  allRatingsCache = [];
+  rerenderAll();
 } else {
   subscribeRatings(
     (ratings) => {
-      state.ratings = ratings;
-      state.cafes = groupCafes(ratings);
-      renderMarkers(state.cafes);
-      renderHeroStats();
-      renderPodium();
-      renderRecent();
-      renderLeaderboard();
-      renderCharts(state.cafes, state.ratings, 2);
+      allRatingsCache = ratings;
+      rerenderAll();
     },
     (err) => {
       console.error(err);

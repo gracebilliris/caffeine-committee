@@ -257,7 +257,68 @@ export function renderProlificRaters(ratings) {
   });
 }
 
-// Draws the numeric value at the end of each bar.
+export function renderTeamChart(ratings, cardEl) {
+  applyGlobalDefaults();
+  destroy("teams");
+  const el = document.getElementById("chart-teams");
+  if (!el) return;
+
+  // Aggregate avg + count per team.
+  const map = new Map();
+  for (const r of ratings) {
+    const t = (r.team || "").trim();
+    if (!t) continue;
+    const e = map.get(t) ?? { sum: 0, n: 0 };
+    e.sum += r.rating; e.n += 1;
+    map.set(t, e);
+  }
+  const teams = [...map.entries()]
+    .map(([name, { sum, n }]) => ({ name, avg: sum / n, count: n }))
+    .sort((a, b) => b.avg - a.avg);
+
+  if (cardEl) cardEl.hidden = teams.length === 0;
+  if (!teams.length) return;
+
+  charts.teams = new Chart(el, {
+    type: "bar",
+    data: {
+      labels: teams.map((t) => t.name),
+      datasets: [{
+        label: "Avg rating",
+        data: teams.map((t) => +t.avg.toFixed(2)),
+        backgroundColor: (ctx) =>
+          makeGradient(ctx.chart.ctx, ctx.chart.chartArea, lighten(PALETTE.coffee, 0.4), PALETTE.coffee),
+        borderRadius: 6,
+        borderSkipped: false,
+        barPercentage: 0.7,
+        categoryPercentage: 0.85,
+      }],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 24 } },
+      scales: {
+        x: { min: 0, max: 10, grid: { color: "rgba(120,120,120,0.08)" } },
+        y: { grid: { display: false } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const t = teams[ctx.dataIndex];
+              return ` ${t.avg.toFixed(2)} / 10  ·  ${t.count} ratings`;
+            },
+          },
+        },
+      },
+      animation: { duration: 600, easing: "easeOutQuart" },
+    },
+    plugins: [valueLabelPlugin({ axis: "x" })],
+  });
+}
 function valueLabelPlugin({ axis = "y", suffix = "" } = {}) {
   return {
     id: "ccValueLabel",
