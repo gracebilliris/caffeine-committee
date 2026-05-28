@@ -359,7 +359,12 @@ async function runAddressSearch(q) {
     const results = await searchCafe(q);
     els.searchResults.innerHTML = "";
     if (!results.length) {
-      els.searchResults.hidden = true;
+      const li = document.createElement("li");
+      li.className = "no-results";
+      li.innerHTML = `<span>No matches found for "${escapeHtml(q)}".</span>
+        <small class="muted">Try the street address, or click the map to drop a pin.</small>`;
+      els.searchResults.appendChild(li);
+      els.searchResults.hidden = false;
       return;
     }
     for (const r of results) {

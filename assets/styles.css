@@ -341,6 +341,11 @@ dialog#team-dialog article { max-width: 420px; }
   justify-content: space-between;
 }
 .search-results li small { white-space: nowrap; flex-shrink: 0; }
+.search-results li.no-results {
+  flex-direction: column; align-items: flex-start; gap: .15rem; cursor: default;
+}
+.search-results li.no-results small { white-space: normal; }
+.search-results li.no-results:hover { background: transparent; }
 .search-results li:last-child { border-bottom: none; }
 .search-results li:hover,
 .search-results li[aria-selected="true"] { background: var(--pico-secondary-background); }
