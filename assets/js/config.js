@@ -6,7 +6,7 @@ export const supabaseUrl = "https://qjnwifixdyfqwjqpeumv.supabase.co";
 export const supabaseAnonKey = "sb_publishable_UGcKp8aPPfAS0LTHF0lVAQ_GIYzGoki";
 
 // 50 Martin Place, Sydney — default map center & distance origin.
-export const MARTIN_PLACE = { lat: -33.86753, lng: 151.20704 };
+export const MARTIN_PLACE = { lat: -33.86750, lng: 151.21028 };
 
 export const DEFAULT_ZOOM = 16;
 

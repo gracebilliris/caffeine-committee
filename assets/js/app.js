@@ -241,8 +241,7 @@ function formatPhotonLabel(p) {
   return name ? `${name} — ${parts.join(", ")}` : parts.join(", ");
 }
 
-// Australia bounding box (W,S,E,N).
-const AU_BBOX = [112.5, -44.0, 154.0, -10.0];
+// Australia-wide search with distance-based ranking from 50 Martin Place.
 
 function haversineKm(a, b) {
   const R = 6371, toRad = (d) => (d * Math.PI) / 180;
@@ -253,25 +252,74 @@ function haversineKm(a, b) {
 }
 
 async function searchCafe(q) {
-  // Restrict to Australia; bias ranking toward 50 Martin Place.
-  const bbox = AU_BBOX.join(",");
-  const url = `https://photon.komoot.io/api/?lang=en&limit=20&bbox=${bbox}`
-            + `&lat=${MARTIN_PLACE.lat}&lon=${MARTIN_PLACE.lng}`
-            + `&q=${encodeURIComponent(q)}`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error("Search failed");
-  const data = await r.json();
-  return (data.features || [])
-    .map((f) => {
+  // Two parallel queries: one biased to Martin Place (POIs first), one Nominatim
+  // for broader cafe coverage. Merge + dedupe + sort by distance.
+  const photonUrl =
+    `https://photon.komoot.io/api/?lang=en&limit=15`
+    + `&lat=${MARTIN_PLACE.lat}&lon=${MARTIN_PLACE.lng}`
+    + `&q=${encodeURIComponent(q)}`;
+
+  // Nominatim is excellent for named POIs (cafes, restaurants). Bias with viewbox.
+  const vb = [
+    MARTIN_PLACE.lng - 0.5, MARTIN_PLACE.lat - 0.5,
+    MARTIN_PLACE.lng + 0.5, MARTIN_PLACE.lat + 0.5,
+  ].join(",");
+  const nomUrl =
+    `https://nominatim.openstreetmap.org/search?format=json&limit=10`
+    + `&countrycodes=au&addressdetails=1&namedetails=1`
+    + `&viewbox=${vb}&bounded=0`
+    + `&q=${encodeURIComponent(q)}`;
+
+  const [photon, nom] = await Promise.allSettled([
+    fetch(photonUrl).then((r) => r.ok ? r.json() : { features: [] }),
+    fetch(nomUrl, { headers: { "Accept-Language": "en" } })
+      .then((r) => r.ok ? r.json() : []),
+  ]);
+
+  const out = [];
+  if (photon.status === "fulfilled") {
+    for (const f of (photon.value.features || [])) {
       const lat = f.geometry.coordinates[1], lon = f.geometry.coordinates[0];
-      return {
+      out.push({
         lat, lon,
         display_name: formatPhotonLabel(f.properties),
         name: f.properties.name,
         osm_value: f.properties.osm_value,
-        _dist: haversineKm(MARTIN_PLACE, { lat, lng: lon }),
-      };
-    })
+        _src: "photon",
+      });
+    }
+  }
+  if (nom.status === "fulfilled") {
+    for (const f of nom.value) {
+      const lat = Number(f.lat), lon = Number(f.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      out.push({
+        lat, lon,
+        display_name: f.display_name,
+        name: f.namedetails?.name || f.name || null,
+        osm_value: f.type,
+        _src: "nominatim",
+      });
+    }
+  }
+
+  // Dedupe by ~30m proximity + identical name.
+  const seen = [];
+  const dedup = [];
+  for (const r of out) {
+    const dup = seen.find((s) =>
+      (s.name || "") === (r.name || "")
+      && Math.abs(s.lat - r.lat) < 0.0003
+      && Math.abs(s.lon - r.lon) < 0.0003,
+    );
+    if (dup) continue;
+    seen.push(r);
+    r._dist = haversineKm(MARTIN_PLACE, { lat: r.lat, lng: r.lon });
+    dedup.push(r);
+  }
+
+  return dedup
+    .filter((r) => r._dist <= 4000) // anywhere in Australia
     .sort((a, b) => a._dist - b._dist)
     .slice(0, 8);
 }
