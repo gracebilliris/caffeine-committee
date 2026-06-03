@@ -765,7 +765,7 @@ els.authForm.addEventListener("submit", async (e) => {
       setAuthMode("verify");
       els.authStatus.hidden = false;
       els.authStatus.className = "status ok";
-      els.authStatus.textContent = `We emailed a 6-digit code to ${email}. Enter it above.`;
+      els.authStatus.textContent = `We emailed a sign-in code to ${email}. Enter it above.`;
       els.authCode.focus();
     } else {
       const code = els.authCode.value.trim();
