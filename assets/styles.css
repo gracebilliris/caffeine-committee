@@ -386,14 +386,33 @@ label.inline input { margin: 0; }
 #leaderboard tbody tr:nth-child(3) td:first-child::before { content: "🥉 "; }
 
 .charts { grid-template-columns: 1fr 1fr; gap: 1rem; }
-.charts article { min-width: 0; display: flex; flex-direction: column; }
+.charts article {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 380px;
+}
 .charts article header {
   display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap;
+  flex: 0 0 auto;
 }
 .charts article header small { font-weight: 400; }
-.charts canvas  { width: 100% !important; height: 300px !important; flex: 1; }
-.chart-wide { grid-column: 1 / -1; }
-.chart-wide canvas { height: 280px !important; }
+/* Chart.js needs a constrained parent for `maintainAspectRatio: false`.
+   We make the article a fixed height and let the canvas fill the remainder
+   via flex. min-height: 0 lets the flex child shrink below its content. */
+.charts .chart-box {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+.charts canvas {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+.chart-wide { grid-column: 1 / -1; height: 340px; }
 @media (max-width: 900px) {
   .charts { grid-template-columns: 1fr; }
   .chart-wide { grid-column: auto; }
