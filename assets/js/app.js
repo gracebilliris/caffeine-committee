@@ -75,8 +75,7 @@ function renderHeroStats() {
   const { ratings, cafes } = state;
   const total = ratings.length;
   const avg = total ? ratings.reduce((s, r) => s + r.rating, 0) / total : null;
-  const champ = [...cafes].filter((c) => c.count >= 2).sort((a, b) => b.avg - a.avg)[0]
-              ?? [...cafes].sort((a, b) => b.avg - a.avg)[0];
+  const champ = [...cafes].sort((a, b) => b.avg - a.avg)[0];
 
   document.getElementById("stat-total").textContent = total;
   document.getElementById("stat-cafes").textContent = cafes.length;
@@ -89,7 +88,7 @@ function renderHeroStats() {
 // ---------- Top 3 podium ----------
 function renderPodium() {
   const top3 = [...state.cafes]
-    .filter((c) => c.count >= 2)
+    .filter((c) => c.count >= 1)
     .sort((a, b) => b.avg - a.avg)
     .slice(0, 3);
 
@@ -113,7 +112,7 @@ function renderPodium() {
     } else {
       nameEl.textContent = "—";
       scoreEl.textContent = "—";
-      countEl.textContent = "Need 2+ ratings";
+      countEl.textContent = "No ratings yet";
       slot.style.cursor = "default";
       slot.onclick = null;
     }
@@ -701,7 +700,7 @@ function rerenderAll() {
   renderPodium();
   renderRecent();
   renderLeaderboard();
-  renderCharts(state.cafes, state.ratings, 2);
+  renderCharts(state.cafes, state.ratings, 1);
   renderTeamChart(allRatingsCache, els.chartTeamsCard, (id) => teamById(id)?.name);
 }
 
