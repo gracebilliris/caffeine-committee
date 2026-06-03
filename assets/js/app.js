@@ -769,10 +769,10 @@ els.authForm.addEventListener("submit", async (e) => {
       els.authCode.focus();
     } else {
       const code = els.authCode.value.trim();
-      if (!/^\d{6}$/.test(code)) {
+      if (!/^\d{6,10}$/.test(code)) {
         els.authStatus.hidden = false;
         els.authStatus.className = "status err";
-        els.authStatus.textContent = "Enter the 6-digit code from your email.";
+        els.authStatus.textContent = "Enter the numeric code from your email.";
         return;
       }
       await verifyOtpCode(pendingEmail, code);
