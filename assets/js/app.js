@@ -4,7 +4,7 @@ import { initMap, renderMarkers, onMapClick, onRateCafe, setPin, flyTo } from ".
 import { renderCharts, renderTeamChart } from "./charts.js";
 import {
   initAuth, getAuthState, onAuthChange,
-  signInWithMagicLink, signOut,
+  requestOtpCode, verifyOtpCode, signOut,
 } from "./auth.js";
 import {
   initTeams, getTeamsState, onTeamsChange,
@@ -44,6 +44,10 @@ const els = {
   authDialog: $("auth-dialog"),
   authForm: $("auth-form"),
   authEmail: $("auth-email"),
+  authCode: $("auth-code"),
+  authCodeLabel: $("auth-code-label"),
+  authSubmit: $("auth-submit"),
+  authResend: $("auth-resend"),
   authStatus: $("auth-status"),
   // Teams
   myTeamsSection: $("my-teams-section"),
@@ -705,9 +709,34 @@ function rerenderAll() {
 }
 
 // ---------- Auth UI ----------
+// Two-step OTP flow: 1) email -> Supabase sends 6-digit code; 2) verify code.
+let pendingEmail = null;
+
+function setAuthMode(mode) {
+  // mode: "request" | "verify"
+  if (mode === "request") {
+    pendingEmail = null;
+    els.authEmail.disabled = false;
+    els.authEmail.required = true;
+    els.authCodeLabel.hidden = true;
+    els.authCode.required = false;
+    els.authCode.value = "";
+    els.authSubmit.textContent = "Send code";
+    els.authResend.hidden = true;
+  } else {
+    els.authEmail.disabled = true;
+    els.authEmail.required = false;
+    els.authCodeLabel.hidden = false;
+    els.authCode.required = true;
+    els.authSubmit.textContent = "Verify code";
+    els.authResend.hidden = false;
+  }
+}
+
 function openAuthDialog() {
   els.authStatus.hidden = true;
   els.authForm.reset();
+  setAuthMode("request");
   els.authDialog.showModal();
 }
 
@@ -718,23 +747,46 @@ els.teamDialog.addEventListener("click", (e) => {
   if (e.target.matches("[data-close]") || e.target === els.teamDialog) els.teamDialog.close();
 });
 
+els.authResend.addEventListener("click", () => {
+  els.authStatus.hidden = true;
+  setAuthMode("request");
+  els.authEmail.focus();
+});
+
 els.authForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const email = els.authEmail.value.trim();
-  if (!email) return;
-  const btn = document.getElementById("auth-submit");
-  btn.setAttribute("aria-busy", "true");
+  els.authSubmit.setAttribute("aria-busy", "true");
   try {
-    await signInWithMagicLink(email);
-    els.authStatus.hidden = false;
-    els.authStatus.className = "status ok";
-    els.authStatus.textContent = `Check ${email} for your sign-in link.`;
+    if (!pendingEmail) {
+      const email = els.authEmail.value.trim();
+      if (!email) return;
+      await requestOtpCode(email);
+      pendingEmail = email;
+      setAuthMode("verify");
+      els.authStatus.hidden = false;
+      els.authStatus.className = "status ok";
+      els.authStatus.textContent = `We emailed a 6-digit code to ${email}. Enter it above.`;
+      els.authCode.focus();
+    } else {
+      const code = els.authCode.value.trim();
+      if (!/^\d{6}$/.test(code)) {
+        els.authStatus.hidden = false;
+        els.authStatus.className = "status err";
+        els.authStatus.textContent = "Enter the 6-digit code from your email.";
+        return;
+      }
+      await verifyOtpCode(pendingEmail, code);
+      els.authStatus.hidden = false;
+      els.authStatus.className = "status ok";
+      els.authStatus.textContent = "Signed in!";
+      setTimeout(() => els.authDialog.close(), 600);
+    }
   } catch (err) {
     els.authStatus.hidden = false;
     els.authStatus.className = "status err";
-    els.authStatus.textContent = err.message || "Could not send magic link.";
+    els.authStatus.textContent = err.message || "Sign-in failed.";
   } finally {
-    btn.removeAttribute("aria-busy");
+    els.authSubmit.removeAttribute("aria-busy");
   }
 });
 

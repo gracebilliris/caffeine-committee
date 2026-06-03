@@ -36,12 +36,20 @@ export async function initAuth() {
   });
 }
 
-export async function signInWithMagicLink(email) {
+export async function requestOtpCode(email) {
   const c = getClient();
+  // No emailRedirectTo => Supabase emails the 6-digit token instead of a link
+  // (provided the Magic Link email template uses {{ .Token }}).
   const { error } = await c.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: window.location.href.split("#")[0] },
+    options: { shouldCreateUser: true },
   });
+  if (error) throw error;
+}
+
+export async function verifyOtpCode(email, token) {
+  const c = getClient();
+  const { error } = await c.auth.verifyOtp({ email, token, type: "email" });
   if (error) throw error;
 }
 

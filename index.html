@@ -268,13 +268,22 @@
         <button aria-label="Close" rel="prev" data-close></button>
         <strong>Sign in</strong>
       </header>
-      <p class="muted">We'll email you a magic link — no passwords.</p>
+      <p class="muted">We'll email you a 6-digit code — no passwords.</p>
       <form id="auth-form">
         <label>
           Email
-          <input type="email" id="auth-email" required placeholder="you@work.com" />
+          <input type="email" id="auth-email" required placeholder="you@work.com" autocomplete="email" />
         </label>
-        <button type="submit" id="auth-submit">Send magic link</button>
+        <label id="auth-code-label" hidden>
+          6-digit code
+          <input type="text" id="auth-code" inputmode="numeric" pattern="[0-9]*"
+                 maxlength="6" autocomplete="one-time-code"
+                 placeholder="123456" />
+        </label>
+        <button type="submit" id="auth-submit">Send code</button>
+        <button type="button" id="auth-resend" class="secondary outline" hidden>
+          Use a different email
+        </button>
         <p id="auth-status" class="status" hidden></p>
       </form>
     </article>
